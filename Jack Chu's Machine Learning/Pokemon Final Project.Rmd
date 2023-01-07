@@ -1,0 +1,970 @@
+---
+title: "Pokemon Machine Learning Project"
+author: "Jack Chu, Charlie Han"
+format:
+  html:
+    theme: solar
+    toc: true
+    toc-location: left
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Visualization Work for Pokémon dataset and Pokémon Combat dataset
+
+First we read in the Pokémon dataset and create a visualization to better understand the number of Pokémons in each type, we find out that the types Water, Normal, Grass have the most Pokémons.
+```{r}
+library(ggplot2)
+library(dplyr)
+
+pokemon<-read.csv("~/Downloads/pokemon.csv",sep=",",stringsAsFactors=F)
+
+colnames(pokemon)
+
+summary(pokemon)
+
+pokemon <- within(pokemon, 
+                  Type.1 <- factor(Type.1, levels=names(sort(table(Type.1), 
+                            decreasing=TRUE))))
+
+color<-c("#6F35FC","#B7B7CE","#A98FF3","#F95587","#B6A136","#EE8130","#F7D02C","#705746","#735797","#E2BF65","#96D9D6","#6390F0","#7AC74C","#C22E28","#D685AD","#A33EA1","#A8A77A","#A6B91A")
+
+
+ggplot(data=pokemon, aes(x=Type.1)) +
+  geom_bar(stat="count", fill=color)
+
+```
+
+Then we read in the Pokémon combat dataset. From this dataset, we can only see the id of the winner and loser Pokémon, so we try to extract the features info such as correct name, the attack points, speed... of the Winner/ Loser Pokémon from the Pokémon dataset and comfine all those with the combat dataset.
+
+
+```{r}
+combats<-read.csv('~/Downloads/combats.csv',sep=",",stringsAsFactors=F)
+names <- pokemon %>% select(X., Name)
+
+
+#Find names
+combats$First_pokemon_name<-sapply(combats$First_pokemon, function(x) names$Name[match(x, names$X.)])
+combats$Second_pokemon_name<-sapply(combats$Second_pokemon, function(x) names$Name[match(x, names$X.)])
+combats$Winner_name<-sapply(combats$Winner, function(x) names$Name[match(x, names$X.)])
+loser<-ifelse(combats$Winner==combats$First_pokemon,combats$Second_pokemon,combats$First_pokemon)
+combats$Loser_name<-sapply(loser, function(x) names$Name[match(x, names$X.)])
+
+
+#Combine features from Pokemon dataset with combat dataset
+combats$Winner_attack<-sapply(combats$Winner_name, function(x) pokemon$Attack[match(x, pokemon$Name)])
+combats$Loser_attack<-sapply(combats$Loser_name, function(x) pokemon$Attack[match(x, pokemon$Name)])
+combats$Winner_HP<-sapply(combats$Winner_name, function(x) pokemon$HP[match(x, pokemon$Name)])
+combats$Loser_HP<-sapply(combats$Loser_name, function(x) pokemon$HP[match(x, pokemon$Name)])
+combats$Winner_defense<-sapply(combats$Winner_name, function(x) pokemon$Defense[match(x, pokemon$Name)])
+combats$Loser_defense<-sapply(combats$Loser_name, function(x) pokemon$Defense[match(x, pokemon$Name)])
+combats$Winner_sp_atk<-sapply(combats$Winner_name, function(x) pokemon$Sp..Atk[match(x, pokemon$Name)])
+combats$Loser_sp_atk<-sapply(combats$Loser_name, function(x) pokemon$Sp..Atk[match(x, pokemon$Name)])
+combats$Winner_sp_def<-sapply(combats$Winner_name, function(x) pokemon$Sp..Def[match(x, pokemon$Name)])
+combats$Loser_sp_def<-sapply(combats$Loser_name, function(x) pokemon$Sp..Def[match(x, pokemon$Name)])
+combats$Winner_speed<-sapply(combats$Winner_name, function(x) pokemon$Speed[match(x, pokemon$Name)])
+combats$Loser_speed<-sapply(combats$Loser_name, function(x) pokemon$Speed[match(x, pokemon$Name)])
+combats$Winner_Generation<-sapply(combats$Winner_name, function(x) pokemon$Generation[match(x, pokemon$Name)])
+combats$Loser_Generation<-sapply(combats$Loser_name, function(x) pokemon$Generation[match(x, pokemon$Name)])
+combats$Winner_Type<-sapply(combats$Winner_name, function(x) pokemon$Type.1[match(x, pokemon$Name)])
+combats$Loser_Type<-sapply(combats$Loser_name, function(x) pokemon$Type.1[match(x, pokemon$Name)])
+```
+
+
+We would like to first calculate the differences between all the numeric competence features between the winner Pokémon and the loser Pokémon.
+
+Second, we create a new variable which includes the info about whether the winner Pokémon has type advantage over the loser Pokémon or not. If yes, then we assign 1, if not, the value remains 0. However, if the winner Pokémon has type disadvantage with the loser Pokémon, we assign -1.
+
+We also incude the variable "if the winner Pokémon is legendary or not".
+
+```{r}
+# 1
+combats$diff_atk <- combats$Winner_attack - combats$Loser_attack
+combats$diff_def <- combats$Winner_defense - combats$Loser_defense
+combats$diff_sp_atk <- combats$Winner_sp_atk - combats$Loser_sp_atk
+combats$diff_sp_def <- combats$Winner_sp_def - combats$Loser_sp_def
+combats$diff_speed <- combats$Winner_speed - combats$Loser_speed
+combats$diff_HP <- combats$Winner_HP - combats$Loser_HP
+combats$diff_Gen <- combats$Winner_Generation - combats$Loser_Generation
+
+
+#2
+combats$strong <- rep(0, length(combats$diff_atk))
+
+combats$strong[combats$Winner_Type == "Normal" & combats$Loser_Type %in% 
+                 c("Rock", "Steel", "Ghost")] <- -1
+
+combats$strong[combats$Winner_Type == "Fighting" & combats$Loser_Type %in% 
+                 c('Normal', "Rock", "Steel", "Ice", "Dark")] <- 1
+combats$strong[combats$Winner_Type == "Fighting" & combats$Loser_Type %in% 
+                 c("Flying", "Poison", "Bug", "Psychic", "Ghost")] <- -1
+
+combats$strong[combats$Winner_Type == "Flying" & combats$Loser_Type %in% 
+                 c("Fighting", "Bug", "Grass", "Fairy")] <- 1
+combats$strong[combats$Winner_Type == "Flying" & combats$Loser_Type %in% 
+                 c("Rock", "Steel", "Electric")] <- -1
+
+combats$strong[combats$Winner_Type == "Poison" & combats$Loser_Type %in% 
+                 c("Grass", "Fairy")] <- 1
+combats$strong[combats$Winner_Type == "Poison" & combats$Loser_Type %in% 
+                 c("Ground", "Rock", "Ghost")] <- -1
+
+combats$strong[combats$Winner_Type == "Ground" & combats$Loser_Type %in% 
+                c("Poison", "Rock", "Steel", "Fire", "Electric")] <- 1
+combats$strong[combats$Winner_Type == "Ground" & combats$Loser_Type %in% 
+                 c("Bug", "Grass")] <- -1
+
+combats$strong[combats$Winner_Type == "Rock" & combats$Loser_Type %in% 
+                 c("Flying", "Bug", "Fire", "Ice")] <- 1
+combats$strong[combats$Winner_Type == "Rock" & combats$Loser_Type %in% 
+                 c("Fighting", "Ground", "Steel")] <- -1
+
+combats$strong[combats$Winner_Type == "Bug" & combats$Loser_Type %in% 
+                 c("Grass", "Psychic", "Dark")] <- 1
+combats$strong[combats$Winner_Type == "Bug" & combats$Loser_Type %in% 
+                 c("Fighting", "Flying", "Poison", "Ghost", "Steel", 
+                   "Fire", "Fairy")] <- -1
+
+combats$strong[combats$Winner_Type == "Ghost" & combats$Loser_Type %in% 
+                 c("Psychic")] <- 1
+combats$strong[combats$Winner_Type == "Ghost" & combats$Loser_Type %in% 
+                 c("Dark")] <- -1
+
+combats$strong[combats$Winner_Type == "Steel" & combats$Loser_Type %in% 
+                 c("Rock", "Ice", "Fairy")] <- 1
+combats$strong[combats$Winner_Type == "Steel" & combats$Loser_Type %in% 
+                 c("Fire", "Water", "Electric")] <- -1
+
+combats$strong[combats$Winner_Type == "Fire" & combats$Loser_Type %in% 
+                 c("Bug", "Steel", "Grass", "Ice")] <- 1
+combats$strong[combats$Winner_Type == "Fire" & combats$Loser_Type %in% 
+                 c("Rock", "Water", "Dragon")] <- -1
+
+combats$strong[combats$Winner_Type == "Water" & combats$Loser_Type %in% 
+                 c("Ground", "Rock", "Fire")] <- 1
+combats$strong[combats$Winner_Type == "Water" & combats$Loser_Type %in% 
+                 c("Grass", "Dragon")] <- -1
+
+combats$strong[combats$Winner_Type == "Grass" & combats$Loser_Type %in% 
+                 c("Ground", "Rock", "Water")] <- 1
+combats$strong[combats$Winner_Type == "Grass" & combats$Loser_Type %in% 
+                 c("Flying", "Poison", "Bug", "Steel", "Fire")] <- -1
+
+combats$strong[combats$Winner_Type == "Electric" & combats$Loser_Type %in% 
+                 c("Flying", "Water")] <- 1
+combats$strong[combats$Winner_Type == "Electric" & combats$Loser_Type %in% 
+               c("Ground", "Grass")] <- -1
+
+combats$strong[combats$Winner_Type == "Psychic" & combats$Loser_Type %in% 
+                 c("Fighting", "Poison")] <- 1
+combats$strong[combats$Winner_Type == "Psychic" & combats$Loser_Type %in% 
+               c("Steel", "Dark")] <- -1
+
+combats$strong[combats$Winner_Type == "Ice" & combats$Loser_Type %in% 
+                 c("Flying", "Ground", "Grass", "Dragon")] <- 1
+combats$strong[combats$Winner_Type == "Ice" & combats$Loser_Type %in% 
+               c('Steel', 'Fire', 'Water')] <- -1
+
+combats$strong[combats$Winner_Type == "Dragon" & combats$Loser_Type %in% 
+                 c("Steel")] <- -1
+
+combats$strong[combats$Winner_Type == "Dark" & combats$Loser_Type %in% 
+               c("Ghost", "Psychic")] <- 1
+combats$strong[combats$Winner_Type == "Dark" & combats$Loser_Type %in% 
+               c("Fighting", "Fairy")] <- -1
+
+combats$strong[combats$Winner_Type == "Fairy" & combats$Loser_Type %in% 
+                 c("Fighting", "Dragon", "Dark")] <- 1
+combats$strong[combats$Winner_Type == "Fairy" & combats$Loser_Type %in% 
+               c("Poison", "Steel", "Fire")] <- -1
+
+combats$winner_legendary<-sapply(combats$Winner_name, function(x) pokemon$Legendary[match(x, pokemon$Name)])
+
+```
+
+
+It's about time for us to take a look into the potential winning factor by creating some density plots and bar charts.
+
+1. From this viz, we find out that winner Pokémon do have more positive attack points difference than the negative, meaing it could be a potential factor to winning the battle. However, generally, the winner Pokémons do not all have relatively strong attack points over the loser Pokémon.
+```{r}
+ggplot(combats, aes(x=combats$diff_atk))+
+  geom_density(color="black", fill="#E69F00", alpha=.75)
+```
+
+2. This viz is similar to the first one. Special attack points could be a potential factor but there are still lots of negative special attack points differences form the loser Pokémon for the winner Pokémon.
+```{r}
+ggplot(combats, aes(x=combats$diff_sp_atk))+
+  geom_density(color="black", fill="#E69F00", alpha=.75)
+```
+
+3. From this viz, we can tell generation difference between two Pokémons is probably not that crucial to win a battle.
+
+```{r}
+hist(combats$diff_Gen, col="#E69F00")
+```
+
+
+4. From this viz, we can also tell hp difference between two Pokémons is probably not that crucial to win a battle as well.
+
+```{r}
+ggplot(combats, aes(x=combats$diff_HP))+
+  geom_density(color="black", fill="#E69F00", alpha=.75)
+```
+
+
+4. Now, from this speed difference viz, we find out that if one Pokémon has higher speed than the other one, it has more chances to win the battle.
+
+```{r}
+ggplot(combats, aes(x=combats$diff_speed))+
+  geom_density(color="black", fill="#E69F00", alpha=.75)
+```
+
+
+5. From this viz, we believe type difference between two Pokémons could play a factor to winning the battle but not that crucial.
+```{r}
+ggplot(combats) +
+  geom_bar(aes(x = combats$strong), fill = "darkblue") +
+  xlab("Strong VS (Winner)") + ylab("Count")
+table(combats$strong)
+```
+
+
+6. From this viz, we can see there are still a great number of outcomes showing winner Pokémon is a legendary one. It could be a important factor.
+```{r}
+ggplot(combats) +
+  geom_bar(aes(x = combats$winner_legendary), fill = "gold") +
+  xlab("Winner Lengendary") + ylab("Count")
+table(combats$winner_legendary)
+```
+
+
+## Data Processing & Forming Variables
+
+Read in the data
+```{r}
+library(dplyr)
+
+pokemon<-read.csv("~/Downloads/pokemon.csv",sep=",",stringsAsFactors=F)
+
+combats<-read.csv('~/Downloads/combats.csv',sep=",",stringsAsFactors=F)
+
+names <- pokemon %>% select(X., Name)
+```
+
+
+Combine Pokemon dataset and Combat dataset to generate features for First Pokemon and Second Pokemon. Also, create variables of feature difference between first Pokemon and second Pokemon by using the first minus the second and some using the proportion of the two Pokemon's features.
+We then put type difference into consideration and created two variables: strong and weak, they represent whether a certain type of Pokemon has advantage/ disadvantage over the other certain type of Pokemon. Finally, we used if the Pokemon is legendary or not as a variable. The dependent variable we used is if_first_wins, which represents if the first Pokemon wins the battle or not, if Yes, we assign 1 and 0 for No.
+```{r}
+#Find names
+combats$First_pokemon_name<-sapply(combats$First_pokemon, function(x) names$Name[match(x, names$X.)])
+combats$Second_pokemon_name<-sapply(combats$Second_pokemon, function(x) names$Name[match(x, names$X.)])
+
+#Dependent variable
+combats$if_first_win<-ifelse(combats$Winner==combats$First_pokemon,'yes','no')
+combats$if_first_win[combats$if_first_win == "no"] <- 0
+combats$if_first_win[combats$if_first_win == "yes"] <- 1
+combats$if_first_win <- as.numeric(combats$if_first_win)
+
+
+# First Pokemon & Second Pikemon's features
+combats$First_attack<-sapply(combats$First_pokemon_name, function(x) pokemon$Attack[match(x, pokemon$Name)])
+combats$Second_attack<-sapply(combats$Second_pokemon_name, function(x) pokemon$Attack[match(x, pokemon$Name)])
+combats$diff_atk <- combats$First_attack - combats$Second_attack
+
+
+combats$First_HP<-sapply(combats$First_pokemon_name, function(x) pokemon$HP[match(x, pokemon$Name)])
+combats$Second_HP<-sapply(combats$Second_pokemon_name, function(x) pokemon$HP[match(x, pokemon$Name)])
+combats$diff_HP <- combats$First_HP - combats$Second_HP
+combats$prop_HP <- combats$First_HP / combats$Second_HP
+
+
+combats$First_defense<-sapply(combats$First_pokemon_name, function(x) pokemon$Defense[match(x, pokemon$Name)])
+combats$Second_defense<-sapply(combats$Second_pokemon_name, function(x) pokemon$Defense[match(x, pokemon$Name)])
+combats$diff_def <- combats$First_defense - combats$Second_defense
+
+
+combats$First_sp_atk<-sapply(combats$First_pokemon_name, function(x) pokemon$Sp..Atk[match(x, pokemon$Name)])
+combats$Second_sp_atk<-sapply(combats$Second_pokemon_name, function(x) pokemon$Sp..Atk[match(x, pokemon$Name)])
+combats$diff_sp_atk <- combats$First_sp_atk - combats$Second_sp_atk
+
+
+combats$First_sp_def<-sapply(combats$First_pokemon_name, function(x) pokemon$Sp..Def[match(x, pokemon$Name)])
+combats$Second_sp_def<-sapply(combats$Second_pokemon_name, function(x) pokemon$Sp..Def[match(x, pokemon$Name)])
+combats$diff_sp_def <- combats$First_sp_def - combats$Second_sp_def
+
+
+combats$First_speed<-sapply(combats$First_pokemon_name, function(x) pokemon$Speed[match(x, pokemon$Name)])
+combats$Second_speed<-sapply(combats$Second_pokemon_name, function(x) pokemon$Speed[match(x, pokemon$Name)])
+combats$diff_speed <- combats$First_speed - combats$Second_speed
+combats$prop_speed <- combats$First_speed / combats$Second_speed
+
+
+combats$First_Type<-sapply(combats$First_pokemon_name, function(x) pokemon$Type.1[match(x, pokemon$Name)])
+combats$Second_Type<-sapply(combats$Second_pokemon_name, function(x) pokemon$Type.1[match(x, pokemon$Name)])
+
+
+combats$strong <- rep(0, length(combats$diff_atk))
+combats$weak <- rep(0, length(combats$diff_atk))
+
+combats$weak[combats$First_Type == "Normal" & combats$Second_Type %in% 
+                 c("Rock", "Steel", "Ghost")] <- 1
+
+combats$strong[combats$First_Type == "Fighting" & combats$Second_Type %in% 
+                 c('Normal', "Rock", "Steel", "Ice", "Dark")] <- 1
+combats$weak[combats$Winner_Type == "Fighting" & combats$Second_Type %in% 
+                 c("Flying", "Poison", "Bug", "Psychic", "Ghost")] <- 1
+
+combats$strong[combats$First_Type == "Flying" & combats$Second_Type %in% 
+                 c("Fighting", "Bug", "Grass", "Fairy")] <- 1
+combats$weak[combats$Winner_Type == "Flying" & combats$Second_Type %in% 
+                 c("Rock", "Steel", "Electric")] <- 1
+
+combats$strong[combats$First_Type == "Poison" & combats$Second_Type %in% 
+                 c("Grass", "Fairy")] <- 1
+combats$weak[combats$First_Type == "Poison" & combats$Second_Type %in% 
+                 c("Ground", "Rock", "Ghost")] <- 1
+
+combats$strong[combats$First_Type == "Ground" & combats$Second_Type %in% 
+                 c("Poison", "Rock", "Steel", "Fire", "Electric")] <- 1
+combats$weak[combats$First_Type == "Ground" & combats$Second_Type %in% 
+                 c("Bug", "Grass")] <- 1
+
+combats$strong[combats$First_Type == "Rock" & combats$Second_Type %in% 
+                 c("Flying", "Bug", "Fire", "Ice")] <- 1
+combats$weak[combats$First_Type == "Rock" & combats$Second_Type %in% 
+                 c("Fighting", "Ground", "Steel")] <- 1
+
+combats$strong[combats$First_Type == "Bug" & combats$Second_Type %in% 
+                 c("Grass", "Psychic", "Dark")] <- 1
+combats$weak[combats$First_Type == "Bug" & combats$Second_Type %in% 
+                 c("Fighting", "Flying", "Poison", "Ghost", "Steel", 
+                   "Fire", "Fairy")] <- 1
+
+combats$strong[combats$First_Type == "Ghost" & combats$Second_Type %in% 
+                 c("Psychic")] <- 1
+combats$weak[combats$First_Type == "Ghost" & combats$Second_Type %in% 
+                 c("Dark")] <- 1
+
+combats$strong[combats$First_Type == "Steel" & combats$Second_Type %in% 
+                 c("Rock", "Ice", "Fairy")] <- 1
+combats$weak[combats$First_Type == "Steel" & combats$Second_Type %in% 
+                 c("Fire", "Water", "Electric")] <- 1
+
+combats$strong[combats$First_Type == "Fire" & combats$Second_Type %in% 
+                 c("Bug", "Steel", "Grass", "Ice")] <- 1
+combats$weak[combats$First_Type == "Fire" & combats$Second_Type %in% 
+                 c("Rock", "Water", "Dragon")] <- 1
+
+combats$strong[combats$First_Type == "Water" & combats$Second_Type %in% 
+                 c("Ground", "Rock", "Fire")] <- 1
+combats$weak[combats$First_Type == "Water" & combats$Second_Type %in% 
+                 c("Grass", "Dragon")] <- 1
+
+combats$strong[combats$First_Type == "Grass" & combats$Second_Type %in% 
+                 c("Ground", "Rock", "Water")] <- 1
+combats$weak[combats$First_Type == "Grass" & combats$Second_Type %in% 
+                 c("Flying", "Poison", "Bug", "Steel", "Fire")] <- 1
+
+combats$strong[combats$First_Type == "Electric" & combats$Second_Type %in% 
+                 c("Flying", "Water")] <- 1
+combats$weak[combats$First_Type == "Electric" & combats$Second_Type %in% 
+                 c("Ground", "Grass")] <- 1
+
+combats$strong[combats$First_Type == "Psychic" & combats$Second_Type %in% 
+                 c("Fighting", "Poison")] <- 1
+combats$weak[combats$First_Type == "Psychic" & combats$Second_Type %in% 
+                 c("Steel", "Dark")] <- 1
+
+combats$strong[combats$First_Type == "Ice" & combats$Second_Type %in% 
+                 c("Flying", "Ground", "Grass", "Dragon")] <- 1
+combats$weak[combats$First_Type == "Ice" & combats$Second_Type %in% 
+                 c('Steel', 'Fire', 'Water')] <- 1
+
+combats$weak[combats$First_Type == "Dragon" & combats$Second_Type %in% 
+                 c("Steel")] <- 1
+
+combats$strong[combats$First_Type == "Dark" & combats$Second_Type %in% 
+                 c("Ghost", "Psychic")] <- 1
+combats$weak[combats$First_Type == "Dark" & combats$Second_Type %in% 
+                 c("Fighting", "Fairy")] <- 1
+
+combats$strong[combats$First_Type == "Fairy" & combats$Second_Type %in% 
+                 c("Fighting", "Dragon", "Dark")] <- 1
+combats$weak[combats$First_Type == "Fairy" & combats$Second_Type %in% 
+                 c("Poison", "Steel", "Fire")] <- 1
+
+
+combats$first_legendary<-sapply(combats$First_pokemon_name, function(x) pokemon$Legendary[match(x, pokemon$Name)])
+combats$first_legendary[combats$first_legendary == "True"] <- 1
+combats$first_legendary[combats$first_legendary == "False"] <- 0
+combats$first_legendary <- as.numeric(combats$first_legendary)
+
+combats$second_legendary<-sapply(combats$Second_pokemon_name, function(x) pokemon$Legendary[match(x, pokemon$Name)])
+combats$second_legendary[combats$second_legendary == "True"] <- 1
+combats$second_legendary[combats$second_legendary == "False"] <- 0
+combats$second_legendary <- as.numeric(combats$second_legendary)
+
+combats$atk1_def2_diff <- combats$First_attack - combats$Second_defense
+combats$def1_atk2_diff <- combats$First_defense - combats$Second_attack
+combats$spatk1_spdef2_diff <- combats$First_sp_atk - combats$Second_sp_def
+combats$spdef1_spatk2_diff <- combats$First_sp_def - combats$Second_sp_atk
+
+
+library(fastDummies)
+
+type_db <- dummy_cols(combats[,c( "First_Type" ,"Second_Type" )],
+           remove_selected_columns = TRUE)
+
+combats <- dummy_cols(combats,
+                      select_columns = c( "First_Type" ,"Second_Type" ),
+           remove_selected_columns = TRUE)
+
+combats_use <- combats[,6:70]
+
+
+pokemon_best <- pokemon %>% filter(pokemon$Speed > 100 & 
+                                     pokemon$Attack > 85 & pokemon$HP >80 & 
+                                     pokemon$Legendary == 'False')
+
+```
+
+
+Generating Train data and Test Data using Stratified Splitting
+```{r}
+library(splitstackshape)
+
+
+set.seed(1234) # Set seed
+# Perform stratified sampling
+split_data <- stratified(combats, # Set dataset
+                        group = "if_first_win", # Set variables to use for stratification
+                        size = 0.2,  # Set size of test set
+                        bothSets = TRUE ) # Return both training and test sets
+# Extract train data
+train_data <- split_data[[2]][,6:70]
+train_names <- split_data[[2]][,1:5]
+# Extract test data
+test_data <- split_data[[1]][,6:70]
+test_names <- split_data[[1]][,1:5]
+```
+
+
+## Logistic Regression Model Fitting
+
+```{r}
+library(glmnet) 
+
+logistic_model <- glm(if_first_win~., # Set formula
+             family=binomial(link='logit'), # Set logistic regression
+             data= train_data) # Set dataset
+sum_logistic <- summary(logistic_model) # Sumamrize model
+
+sum_logistic$coefficients[sum_logistic$coefficients[,4] < 0.001, c(1, 4)]
+
+logistic_pred <- predict(logistic_model, newdata = test_data, type = "response")
+
+
+# Create Plot to find the best cut-off value to minimize error
+library(ggplot2)
+plot_dat <- cbind.data.frame(logistic_pred, factor(test_data$if_first_win))
+names(plot_dat) <- c("probability", "response")
+
+
+g_cutoff <- ggplot(plot_dat, aes(x = probability, fill = response)) +
+  geom_density(alpha = 0.3) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Probability",  # Set plot labels
+       fill = "if_first_win",
+       title = "Predicted Probabilities v Win") +
+  scale_fill_manual(values = c("0" = "red", "1" = "blue"), # Manually set fill values
+                    labels = c("0" = "Lose", "1" = "Win"))
+# Generate  Plot
+g_cutoff
+
+
+library(caret)
+
+pred_class <- rep(0, length(logistic_pred))
+pred_class[logistic_pred >= 0.5] <- 1
+
+
+t <- table(pred_class, test_data$if_first_win) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+
+```
+
+
+## Random Forest Model Fitting
+
+```{r}
+library(randomForest)
+
+train_data_for_rf <- train_data
+train_data_for_rf$if_first_win <- as.factor(train_data_for_rf$if_first_win)
+
+test_data_for_rf <- test_data
+test_data_for_rf$if_first_win <- as.factor(test_data_for_rf$if_first_win)
+
+rf_mod <- randomForest(if_first_win~., # Set tree formula
+                       data = train_data_for_rf, # Set dataset
+                       ntree = 500) # Set number of trees to use
+
+rf_mod
+
+oob_error <- rf_mod$err.rate[,1] # Extract oob error
+plot_dat <- cbind.data.frame(rep(1:length(oob_error)), oob_error) # Create plot data
+names(plot_dat) <- c("trees", "oob_error") # Name plot data
+
+
+# Plot oob error
+g_1 <- ggplot(plot_dat, aes(x = trees, y = oob_error)) + # Set x as trees and y as error
+  geom_point(alpha = 0.5, color = "blue") + # Select geom point
+  theme_bw() + # Set theme
+  geom_smooth() + # Add smoothing line
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate")  # Set labels
+g_1 # Print plot
+
+
+library(caret)
+
+## Try different values to find the best random forest
+mtry_vals <- c(20, 23, 26, 30, 33, 36)
+nodesize_vals <- c(1, 10, 15, 50, 100)
+
+params <- expand.grid(mtry_vals, nodesize_vals)
+names(params) <- c("mtry", "nodesize")
+acc_vec <- rep(NA, nrow(params))
+sens_vec <- rep(NA, nrow(params))
+
+for(i in 1:nrow(params)){
+  rf_mod <- randomForest(if_first_win~., # Set tree formula
+                         data = train_data_for_rf, # Set dataset
+                         ntree = 150,
+                         nodesize = params$nodesize[i],
+                         mtry = params$mtry[i]) # Set number of trees to use
+  rf_preds <-rf_mod$predicted # Create predictions for bagging model
+  
+  t <- table(rf_preds,   train_data_for_rf$if_first_win) # Create table
+  c <- confusionMatrix(t, positive = "1") # Produce confusion matrix
+  
+  acc_vec[i] <- c$overall[1]
+  sens_vec[i] <- c$byClass[1]
+}
+
+
+res_db <- cbind.data.frame(params, acc_vec, sens_vec)
+res_db$mtry <- as.factor(res_db$mtry) # Convert tree number to factor for plotting
+res_db$nodesize <- as.factor(res_db$nodesize) # Convert node size to factor for plotting
+g_1 <- ggplot(res_db, aes(y = mtry, x = nodesize, fill = acc_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+                       mid = "white", # Choose mid color
+                       high = "red", # Choose high color
+                       midpoint =mean(res_db$acc_vec), # Choose mid point
+                       space = "Lab", 
+                       na.value ="grey", # Choose NA value
+                       guide = "colourbar", # Set color bar
+                       aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "mtry", fill = "OOB Accuracy") # Set labels
+g_1 # Generate plot
+
+g_2 <- ggplot(res_db, aes(y = mtry, x = nodesize, fill = sens_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+                       mid = "white", # Choose mid color
+                       high = "red", # Choose high color
+                       midpoint =mean(res_db$sens_vec), # Choose mid point
+                       space = "Lab", 
+                       na.value ="grey", # Choose NA value
+                       guide = "colourbar", # Set color bar
+                       aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "Mtry", fill = "OOB Sensitivity") # Set labels
+g_2 # Generate plot
+
+res_db[which(res_db$nodesize == 1),]
+
+
+rf_mod <- randomForest(factor(if_first_win)~., # Set tree formula
+                       data = train_data_for_rf, # Set dataset
+                       ntree = 150,
+                       nodesize = 1,
+                       mtry = 33)
+
+rf_preds <- predict(rf_mod, test_data, type = "prob") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+rf_pred_class <- rep(0, nrow(rf_preds))
+rf_pred_class[rf_preds[,2] >= 0.5] <- 1
+
+t <- table(rf_pred_class, test_data$if_first_win) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+```
+
+
+## XGBoost Model Fitting
+
+```{r}
+library(xgboost)
+
+
+dtrain <- xgb.DMatrix(data = as.matrix(train_data[, 2:64]), label = train_data$if_first_win)
+# Create test matrix
+dtest <- xgb.DMatrix(data = as.matrix(test_data[, 2:64]), label = test_data$if_first_win)
+
+
+
+bst_mod_cv <- xgb.cv(data = dtrain, # Set training data
+                     
+                     nfold = 5, # Use 5 fold cross-validation
+                     
+                     eta = 0.1, # Set learning rate
+                     nrounds = 400, # Set number of rounds
+                     early_stopping_rounds = 20, # Set number of rounds to stop at if
+                     
+                     verbose = 1, # 1 - Prints out fit
+                     nthread = 1, # Set number of parallel threads
+                     print_every_n = 20, # Prints out result every 20th iteration
+                     
+                     objective = "binary:logistic", # Set objective
+                     eval_metric = "auc",
+                     eval_metric = "error") # Set evaluation metric to use
+
+pd <- cbind.data.frame(bst_mod_cv$evaluation_log[,c("iter", "test_error_mean")], rep(0.1, nrow(bst_mod_cv$evaluation_log)))
+names(pd)[3] <- "eta"
+
+plot_data <- rbind.data.frame(pd)
+
+plot_data$eta <- as.factor(plot_data$eta)
+
+g_1 <- ggplot(plot_data, aes(x = iter, y = test_error_mean))+
+  geom_smooth(alpha = 0.5) +
+  theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate", color = "Learning \n Rate")  # Set labels
+g_1
+
+
+
+bst_mod_1 <- xgb.cv(data = dtrain, # Set training data
+                    
+                    nfold = 5, # Use 5 fold cross-validation
+                    
+                    eta = 0.1, # Set learning rate
+                    nrounds = 150, # Set number of rounds
+                    early_stopping_rounds = 20, # Set number of rounds to stop at if
+                    
+                    verbose = 1, # 1 - Prints out fit
+                    nthread = 1, # Set number of parallel threads
+                    print_every_n = 20, # Prints out result every 20th iteration
+                    
+                    objective = "binary:logistic", # Set objective
+                    eval_metric = "auc",
+                    eval_metric = "error") # Set evaluation metric to use
+
+
+bst_mod_2 <- xgb.cv(data = dtrain, # Set training data
+                    
+                    nfold = 5, # Use 5 fold cross-validation
+                    
+                    eta = 0.05, # Set learning rate
+                    nrounds = 150, # Set number of rounds
+                    early_stopping_rounds = 20, # Set number of rounds to stop at if
+                    
+                    verbose = 1, # 1 - Prints out fit
+                    nthread = 1, # Set number of parallel threads
+                    print_every_n = 20, # Prints out result every 20th iteration
+                    
+                    objective = "binary:logistic", # Set objective
+                    eval_metric = "auc",
+                    eval_metric = "error") # Set evaluation metric to use
+
+
+bst_mod_3 <- xgb.cv(data = dtrain, # Set training data
+                    
+                    nfold = 5, # Use 5 fold cross-validation
+                    
+                    eta = 0.3, # Set learning rate
+                    nrounds = 150, # Set number of rounds
+                    early_stopping_rounds = 20, # Set number of rounds to stop at if
+                    
+                    verbose = 1, # 1 - Prints out fit
+                    nthread = 1, # Set number of parallel threads
+                    print_every_n = 20, # Prints out result every 20th iteration
+                    
+                    objective = "binary:logistic", # Set objective
+                    eval_metric = "auc",
+                    eval_metric = "error") # Set evaluation metric to use
+
+
+bst_mod_4 <- xgb.cv(data = dtrain, # Set training data
+                    
+                    nfold = 5, # Use 5 fold cross-validation
+                    
+                    eta = 0.01, # Set learning rate
+                    nrounds = 150, # Set number of rounds
+                    early_stopping_rounds = 20, # Set number of rounds to stop at if
+                    
+                    verbose = 1, # 1 - Prints out fit
+                    nthread = 1, # Set number of parallel threads
+                    print_every_n = 20, # Prints out result every 20th iteration
+                    
+                    objective = "binary:logistic", # Set objective
+                    eval_metric = "auc",
+                    eval_metric = "error") # Set evaluation metric to use
+
+
+bst_mod_5 <- xgb.cv(data = dtrain, # Set training data
+                    
+                    nfold = 5, # Use 5 fold cross-validation
+                    
+                    eta = 0.5, # Set learning rate
+                    nrounds = 150, # Set number of rounds
+                    early_stopping_rounds = 20, # Set number of rounds to stop at if
+                    
+                    verbose = 1, # 1 - Prints out fit
+                    nthread = 1, # Set number of parallel threads
+                    print_every_n = 20, # Prints out result every 20th iteration
+                    
+                    objective = "binary:logistic", # Set objective
+                    eval_metric = "auc",
+                    eval_metric = "error") # Set evaluation metric to use
+
+
+
+pd1 <- cbind.data.frame(bst_mod_1$evaluation_log[,c("iter", "test_error_mean")], rep(0.1, nrow(bst_mod_1$evaluation_log)))
+names(pd1)[3] <- "eta"
+# Extract results for model with eta = 0.1
+pd2 <- cbind.data.frame(bst_mod_2$evaluation_log[,c("iter", "test_error_mean")], rep(0.05, nrow(bst_mod_2$evaluation_log)))
+names(pd2)[3] <- "eta"
+# Extract results for model with eta = 0.05
+pd3 <- cbind.data.frame(bst_mod_3$evaluation_log[,c("iter", "test_error_mean")], rep(0.3, nrow(bst_mod_3$evaluation_log)))
+names(pd3)[3] <- "eta"
+# Extract results for model with eta = 0.01
+pd4 <- cbind.data.frame(bst_mod_4$evaluation_log[,c("iter", "test_error_mean")], rep(0.01, nrow(bst_mod_4$evaluation_log)))
+names(pd4)[3] <- "eta"
+# Extract results for model with eta = 0.005
+pd5 <- cbind.data.frame(bst_mod_5$evaluation_log[,c("iter", "test_error_mean")], rep(0.5, nrow(bst_mod_5$evaluation_log)))
+names(pd5)[3] <- "eta"
+# Join datasets
+plot_data <- rbind.data.frame(pd1, pd2, pd3, pd4, pd5)
+# Converty ETA to factor
+plot_data$eta <- as.factor(plot_data$eta)
+
+g_eta <- ggplot(plot_data, aes(x = iter, y = test_error_mean, color = eta))+
+  geom_smooth(alpha = 0.5) +
+  theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate", color = "Learning \n Rate")  # Set labels
+g_eta
+
+
+best_bst_mod <- xgboost(data = dtrain, # Set training data
+                        eta = 0.3, 
+                        nrounds = 130, # Set number of rounds
+                        
+                        verbose = 1, # 1 - Prints out fit
+                        print_every_n = 20, # Prints out result every 20th iteration
+                        
+                        objective = "binary:logistic", # Set objective
+                        eval_metric = "auc",
+                        eval_metric = "error") # Set evaluation metric to use
+
+
+boost_preds_2 <- predict(best_bst_mod, dtest) # Create predictions for xgboost model
+
+# Convert predictions to classes, using optimal cut-off
+boost_pred_class <- rep(0, length(boost_preds_2))
+boost_pred_class[boost_preds_2 >= 0.5] <- 1
+boost_pred_class[boost_preds_2 < 0.5] <- 0
+
+
+t <- table(boost_pred_class, test_data$if_first_win) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+```
+
+
+## Bagging Model Fitting
+
+```{r}
+bag_mod <- randomForest(if_first_win~., # Set tree formula
+                        data = train_data_for_rf,
+                        mtry = 63,
+                        ntree = 150) # Set number of trees to use) # Set number of trees to use
+bag_mod # View model
+
+bag_preds <- predict(bag_mod, test_data, type = "prob") # Create predictions for xgboost model
+
+boost_pred_class <- rep(0, length(bag_preds[,2]))
+boost_pred_class[bag_preds[,2] >= 0.5] <- 1
+boost_pred_class[bag_preds[,2] < 0.5] <- 0
+
+
+t <- table(boost_pred_class, test_data$if_first_win) # Create table
+confusionMatrix(t, positive = "1") # Produce confusion matrix
+
+```
+
+
+## ROC/ AUC Comparison between Logistic Regression, Random Forest, XGBoost and Bagging
+
+```{r}
+library(pROC)
+
+roc1 = roc(factor(test_data$if_first_win), bag_preds[,2])
+
+roc2 = roc(factor(test_data$if_first_win), rf_preds[,2])
+
+roc3 = roc(factor(test_data$if_first_win), boost_preds_2)
+
+roc4 = roc(factor(test_data$if_first_win), logistic_pred)
+
+plot.roc(roc1, print.auc = TRUE, col = "red", print.auc.col = "red")
+
+plot.roc(roc2, print.auc = TRUE, print.auc.y = 0.6, col ="blue", print.auc.col = "blue", add = TRUE)
+
+plot.roc(roc3, print.auc = TRUE, print.auc.y = 0.4, col ="green", print.auc.col = "green", add = TRUE)
+
+plot.roc(roc4, print.auc = TRUE, print.auc.y = 0.2, col ="black", print.auc.col = "black", add = TRUE)
+
+```
+
+
+## Feature (Variable) Importance Plots
+
+```{r}
+# Extract importance
+imp_mat <- xgb.importance(model = best_bst_mod)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat, top_n = 10)
+
+
+library(ggforce)
+source("~/Downloads/a_insights_shap_functions.r")
+
+
+shap_result <- shap.score.rank(xgb_model = best_bst_mod, 
+                               X_train = as.matrix(train_data[, 2:64]),
+                               shap_approx = F)
+
+
+var_importance(shap_result, top_n=10)
+
+
+shap_long = shap.prep(shap = shap_result,
+                      X_train = as.matrix(train_data[, 2:64]), 
+                      top_n = 10)
+
+
+plot.shap.summary(data_long = shap_long)
+
+
+
+################ Lasso
+train_data_scaled <- as.data.frame(scale(train_data[,-1])) 
+train_data_scaled$if_first_win <- train_data$if_first_win
+
+
+library(plotmo)
+
+fit_3 <- glmnet(x = train_data_scaled[, -65], # Fit explanatory variables
+                y = train_data_scaled$if_first_win, # Fit response variable
+                alpha = 1, # Set alpha as 1 for lasso
+                family = "binomial",
+                lambda = 0.015) 
+
+lasso_fit <- glmnet(x = train_data_scaled[, -65], # Fit explanatory variables
+                    y = train_data_scaled$if_first_win, # Set response variable
+                    alpha = 1, # Set alpha value
+                    family = "binomial")
+
+plot_glmnet(lasso_fit, # Plot lasso coefficients by lambda
+            xvar = "lambda")
+
+coef(fit_3)
+```
+
+
+## Radar Chart 
+
+```{r}
+#################
+library(fmsb)
+
+##1
+mega_Ven <- data.frame(rbind(rep(130, 6), rep(0, 6),
+                       c(100, 80, 123, 122, 120, 80)))
+
+colnames(mega_Ven) <- c("Attack Force: 100", "Health Points: 80", "Defense Points: 123", 
+                    "Sp.Attack Points: 122","Sp.Defense Points: 120", "Speed: 80")
+
+
+radarchart(mega_Ven, cglty = 1, cglcol = "gray",
+           pcol = 4, plwd = 2,
+           pfcol = rgb(0, 0.4, 1, 0.25))
+
+
+##2
+suicune <- data.frame(rbind(rep(130, 6), rep(0, 6),
+                            c(75, 100, 115, 90, 115, 85)))
+
+colnames(suicune) <- c("Attack Force: 75", "Health Points: 100", "Defense Points: 115", 
+                        "Sp.Attack Points: 90","Sp.Defense Points: 115", "Speed: 85")
+
+radarchart(suicune, cglty = 1, cglcol = "gray",
+           pcol = 2, plwd = 2,
+           pfcol = rgb(1, 0, 0, 0.25))
+
+
+##3
+Aurorus <- data.frame(rbind(rep(130, 6), rep(0, 6),
+                             c(77, 123, 72, 99, 92, 58)))
+
+colnames(Aurorus) <- c("Attack Force: 77", "Health Points: 123", "Defense Points: 72", 
+                        "Sp.Attack Points: 99","Sp.Defense Points: 92", "Speed: 58")
+
+
+radarchart(Aurorus, cglty = 1, cglcol = "gray",
+           pcol = 4, plwd = 2,
+           pfcol = rgb(0, 0.4, 1, 0.25))
+
+
+##4
+Charizard <- data.frame(rbind(rep(130, 6), rep(0, 6),
+                            c(84, 78, 78, 109, 85, 100)))
+
+colnames(Charizard) <- c("Attack Force: 84", "Health Points: 78", "Defense Points: 78", 
+                       "Sp.Attack Points: 109","Sp.Defense Points: 85", "Speed: 100")
+
+
+radarchart(Charizard, cglty = 1, cglcol = "gray",
+           pcol = 2, plwd = 2,
+           pfcol = rgb(1, 0, 0, 0.25))
+
+```
+
+
+
+
+
