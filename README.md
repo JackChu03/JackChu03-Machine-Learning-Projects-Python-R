@@ -5,8 +5,8 @@
   * XGBoost, Random Forest, Logistic Regression, Lasso Regression and Bagging Method
 
 ### Python Programming
-* [UFO Project]
+* [UFO Project](https://github.com/JackChu03/JackChu03-Machine-Learning-Projects-Python-R/blob/main/Jack%20Chu's%20Machine%20Learning/UFO%20clustering.py)
   * K-Prototype Clustering
-* [Book Recommendation]
+* [Book Recommendation]()
   * Association Rule
   
