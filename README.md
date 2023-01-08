@@ -1,5 +1,12 @@
 # Machine-Learning-Projects-Python-R
-### Applying XGBoost, Random Forest, Logistic Regression, Lasso Regression and Bagging Method to conduct prediction in r
 
+#### R Programming
+* [Pokemon Final Project]
+  * XGBoost, Random Forest, Logistic Regression, Lasso Regression and Bagging Method
 
-### Applying Clustering and Association Rule in Python
+#### Python Programming
+* [UFO Project]
+  * K-Prototype Clustering
+* [Book Recommendation]
+  * Association Rule
+  
