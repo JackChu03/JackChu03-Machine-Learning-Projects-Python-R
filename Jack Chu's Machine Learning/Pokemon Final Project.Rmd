@@ -1,6 +1,6 @@
 ---
 title: "Pokemon Machine Learning Project"
-author: "Jack Chu, Charlie Han"
+author: "Jack Chu"
 format:
   html:
     theme: solar
